@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Library</title>
+  <meta name="theme-color" content="#b45309">
+  <meta name="description" content="Track the books you own — physical, ebook, or both">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .serif { font-family: 'Libre Baskerville', Georgia, serif; }
+    .book-card { transition: all 0.2s ease; }
+    .book-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px -8px rgba(0,0,0,0.15); }
+    .cover-placeholder {
+      background: linear-gradient(135deg, #d4a574 0%, #8b5a2b 100%);
+    }
+    .modal-backdrop { backdrop-filter: blur(4px); }
+  </style>
+</head>
+<body class="bg-amber-50/40 min-h-screen">
+  <div class="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div>
+        <h1 class="text-4xl font-bold text-stone-800 serif flex items-center gap-3">
+          <i data-lucide="library" class="w-10 h-10 text-amber-700"></i>
+          My Library
+        </h1>
+        <p class="text-stone-600 mt-1" id="stats">0 books</p>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="exportBooks()" class="px-4 py-2 bg-stone-200 hover:bg-stone-300 rounded-lg text-sm font-medium flex items-center gap-2 transition">
+          <i data-lucide="download" class="w-4 h-4"></i> Export
+        </button>
+        <label class="px-4 py-2 bg-stone-200 hover:bg-stone-300 rounded-lg text-sm font-medium flex items-center gap-2 cursor-pointer transition">
+          <i data-lucide="upload" class="w-4 h-4"></i> Import
+          <input type="file" accept=".json" onchange="importBooks(event)" class="hidden">
+        </label>
+        <button onclick="openModal()" class="px-5 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-lg font-medium flex items-center gap-2 shadow-sm transition">
+          <i data-lucide="plus" class="w-5 h-5"></i> Add Book
+        </button>
+      </div>
+    </header>
+
+    <!-- Controls -->
+    <div class="flex flex-col sm:flex-row gap-4 mb-6">
+      <div class="relative flex-1">
+        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400"></i>
+        <input type="text" id="search" placeholder="Search by title or author..." 
+               class="w-full pl-10 pr-4 py-3 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white"
+               oninput="renderBooks()">
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <button onclick="setFilter('all')" id="filter-all" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-amber-700 text-white">All</button>
+        <button onclick="setFilter('physical')" id="filter-physical" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-stone-200 text-stone-700 hover:bg-stone-300">Physical</button>
+        <button onclick="setFilter('ebook')" id="filter-ebook" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-stone-200 text-stone-700 hover:bg-stone-300">Ebook</button>
+        <button onclick="setFilter('both')" id="filter-both" class="filter-btn px-4 py-2 rounded-full text-sm font-medium bg-stone-200 text-stone-700 hover:bg-stone-300">Both</button>
+      </div>
+    </div>
+
+    <!-- Books Grid -->
+    <div id="books-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+    <div id="empty-state" class="hidden text-center py-20">
+      <i data-lucide="book-open" class="w-16 h-16 mx-auto text-stone-300 mb-4"></i>
+      <h3 class="text-xl font-medium text-stone-500">Your library is empty</h3>
+      <p class="text-stone-400 mt-1">Add your first book to get started</p>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div id="modal" class="fixed inset-0 bg-black/40 modal-backdrop hidden items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div class="p-6">
+        <div class="flex items-center justify-between mb-6">
+          <h2 id="modal-title" class="text-2xl font-bold serif">Add Book</h2>
+          <button onclick="closeModal()" class="text-stone-400 hover:text-stone-600">
+            <i data-lucide="x" class="w-6 h-6"></i>
+          </button>
+        </div>
+        <form id="book-form" onsubmit="saveBook(event)">
+          <input type="hidden" id="book-id">
+          <div class="space-y-4">
+            <!-- Quick add tools -->
+            <div class="flex gap-2">
+              <button type="button" onclick="startCameraScan()" class="flex-1 px-3 py-2 bg-stone-100 hover:bg-stone-200 rounded-lg text-sm font-medium flex items-center justify-center gap-1">
+                <i data-lucide="camera" class="w-4 h-4"></i> Scan ISBN
+              </button>
+              <button type="button" onclick="openSearchPanel()" class="flex-1 px-3 py-2 bg-stone-100 hover:bg-stone-200 rounded-lg text-sm font-medium flex items-center justify-center gap-1">
+                <i data-lucide="search" class="w-4 h-4"></i> Search Online
+              </button>
+            </div>
+            <div id="search-panel" class="hidden space-y-2 p-3 bg-stone-50 rounded-lg">
+              <div class="flex gap-2">
+                <input type="text" id="online-search" placeholder="Book title or author..." class="flex-1 px-3 py-2 rounded-lg border border-stone-200 text-sm">
+                <button type="button" onclick="searchBooksOnline()" class="px-3 py-2 bg-amber-700 text-white rounded-lg text-sm">Search</button>
+              </div>
+              <div id="search-results" class="text-sm max-h-40 overflow-y-auto space-y-1"></div>
+            </div>
+            <div id="camera-container" class="hidden relative">
+              <video id="camera-preview" autoplay playsinline class="w-full rounded-lg"></video>
+              <button type="button" onclick="stopCamera()" class="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1">
+                <i data-lucide="x" class="w-5 h-5"></i>
+              </button>
+              <p class="text-xs text-center text-stone-500 mt-1">Point camera at the ISBN barcode on the book</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-stone-700 mb-1">Title *</label>
+              <input type="text" id="title" required class="w-full px-4 py-2.5 rounded-lg border border-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-stone-700 mb-1">Author</label>
+              <input type="text" id="author" class="w-full px-4 py-2.5 rounded-lg border border-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-stone-700 mb-1">Format</label>
+              <select id="type" class="w-full px-4 py-2.5 rounded-lg border border-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                <option value="physical">Physical Book</option>
+                <option value="ebook">Ebook</option>
+                <option value="both">Both Physical & Ebook</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-stone-700 mb-1">Cover Image URL <span class="text-stone-400 text-xs">(optional)</span></label>
+              <input type="url" id="cover" placeholder="https://..." class="w-full px-4 py-2.5 rounded-lg border border-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-stone-700 mb-1">Notes</label>
+              <textarea id="notes" rows="3" class="w-full px-4 py-2.5 rounded-lg border border-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="Where you got it, edition, thoughts..."></textarea>
+            </div>
+          </div>
+          <div class="flex gap-3 mt-6">
+            <button type="button" onclick="closeModal()" class="flex-1 px-4 py-2.5 border border-stone-200 rounded-lg hover:bg-stone-50">Cancel</button>
+            <button type="submit" class="flex-1 px-4 py-2.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg font-medium">Save Book</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let books = JSON.parse(localStorage.getItem('myLibraryBooks') || '[]');
+    let currentFilter = 'all';
+    let editingId = null;
+
+    function saveToStorage() {
+      localStorage.setItem('myLibraryBooks', JSON.stringify(books));
+      updateStats();
+    }
+
+    function updateStats() {
+      const total = books.length;
+      const physical = books.filter(b => b.type === 'physical' || b.type === 'both').length;
+      const ebook = books.filter(b => b.type === 'ebook' || b.type === 'both').length;
+      document.getElementById('stats').textContent = `${total} book${total !== 1 ? 's' : ''} · ${physical} physical · ${ebook} ebook${ebook !== 1 ? 's' : ''}`;
+    }
+
+    function setFilter(filter) {
+      currentFilter = filter;
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.className = 'filter-btn px-4 py-2 rounded-full text-sm font-medium bg-stone-200 text-stone-700 hover:bg-stone-300';
+      });
+      document.getElementById(`filter-${filter}`).className = 'filter-btn px-4 py-2 rounded-full text-sm font-medium bg-amber-700 text-white';
+      renderBooks();
+    }
+
+    function renderBooks() {
+      const search = document.getElementById('search').value.toLowerCase();
+      const filtered = books.filter(book => {
+        const matchesSearch = !search || 
+          book.title.toLowerCase().includes(search) || 
+          (book.author || '').toLowerCase().includes(search);
+        const matchesFilter = currentFilter === 'all' || book.type === currentFilter || 
+          (currentFilter === 'physical' && book.type === 'both') ||
+          (currentFilter === 'ebook' && book.type === 'both');
+        return matchesSearch && matchesFilter;
+      }).sort((a, b) => a.title.localeCompare(b.title));
+
+      const grid = document.getElementById('books-grid');
+      const empty = document.getElementById('empty-state');
+
+      if (filtered.length === 0) {
+        grid.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+      empty.classList.add('hidden');
+
+      grid.innerHTML = filtered.map(book => {
+        const typeColors = {
+          physical: 'bg-emerald-100 text-emerald-800',
+          ebook: 'bg-sky-100 text-sky-800',
+          both: 'bg-violet-100 text-violet-800'
+        };
+        const typeLabels = { physical: 'Physical', ebook: 'Ebook', both: 'Both' };
+        const cover = book.cover 
+          ? `<img src="${book.cover}" alt="" class="w-full h-48 object-cover rounded-t-xl" onerror="this.parentElement.innerHTML='<div class=\\'cover-placeholder w-full h-48 rounded-t-xl flex items-center justify-center text-white text-4xl serif\\'>${book.title.charAt(0)}</div>'">`
+          : `<div class="cover-placeholder w-full h-48 rounded-t-xl flex items-center justify-center text-white text-4xl serif">${book.title.charAt(0)}</div>`;
+
+        return `
+          <div class="book-card bg-white rounded-xl shadow-sm border border-stone-100 overflow-hidden">
+            ${cover}
+            <div class="p-4">
+              <div class="flex items-start justify-between gap-2 mb-2">
+                <h3 class="font-bold text-lg serif leading-tight">${escapeHtml(book.title)}</h3>
+                <span class="text-xs px-2 py-1 rounded-full font-medium ${typeColors[book.type]} whitespace-nowrap">${typeLabels[book.type]}</span>
+              </div>
+              ${book.author ? `<p class="text-stone-600 text-sm mb-2">${escapeHtml(book.author)}</p>` : ''}
+              ${book.notes ? `<p class="text-stone-500 text-xs line-clamp-2">${escapeHtml(book.notes)}</p>` : ''}
+              <div class="flex gap-2 mt-3 pt-3 border-t border-stone-100">
+                <button onclick="editBook('${book.id}')" class="flex-1 text-xs py-1.5 text-stone-600 hover:bg-stone-50 rounded flex items-center justify-center gap-1">
+                  <i data-lucide="pencil" class="w-3.5 h-3.5"></i> Edit
+                </button>
+                <button onclick="deleteBook('${book.id}')" class="flex-1 text-xs py-1.5 text-red-600 hover:bg-red-50 rounded flex items-center justify-center gap-1">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function openModal(book = null) {
+      editingId = book ? book.id : null;
+      document.getElementById('modal-title').textContent = book ? 'Edit Book' : 'Add Book';
+      document.getElementById('book-id').value = book ? book.id : '';
+      document.getElementById('title').value = book ? book.title : '';
+      document.getElementById('author').value = book ? book.author || '' : '';
+      document.getElementById('type').value = book ? book.type : 'physical';
+      document.getElementById('cover').value = book ? book.cover || '' : '';
+      document.getElementById('notes').value = book ? book.notes || '' : '';
+      document.getElementById('modal').classList.remove('hidden');
+      document.getElementById('modal').classList.add('flex');
+      lucide.createIcons();
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.add('hidden');
+      document.getElementById('modal').classList.remove('flex');
+      document.getElementById('book-form').reset();
+      editingId = null;
+    }
+
+    function saveBook(e) {
+      e.preventDefault();
+      const book = {
+        id: editingId || Date.now().toString(),
+        title: document.getElementById('title').value.trim(),
+        author: document.getElementById('author').value.trim(),
+        type: document.getElementById('type').value,
+        cover: document.getElementById('cover').value.trim(),
+        notes: document.getElementById('notes').value.trim(),
+        added: editingId ? books.find(b => b.id === editingId)?.added : new Date().toISOString()
+      };
+
+      if (editingId) {
+        const index = books.findIndex(b => b.id === editingId);
+        if (index !== -1) books[index] = book;
+      } else {
+        books.push(book);
+      }
+
+      saveToStorage();
+      closeModal();
+      renderBooks();
+    }
+
+    function editBook(id) {
+      const book = books.find(b => b.id === id);
+      if (book) openModal(book);
+    }
+
+    function deleteBook(id) {
+      if (confirm('Remove this book from your library?')) {
+        books = books.filter(b => b.id !== id);
+        saveToStorage();
+        renderBooks();
+      }
+    }
+
+    function exportBooks() {
+      const data = JSON.stringify(books, null, 2);
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `my-library-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importBooks(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (Array.isArray(imported)) {
+            books = imported;
+            saveToStorage();
+            renderBooks();
+            alert(`Imported ${imported.length} books!`);
+          } else {
+            alert('Invalid file format');
+          }
+        } catch {
+          alert('Could not read the file');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    // ---- Camera ISBN Scan ----
+    let cameraStream = null;
+    let scanInterval = null;
+
+    async function startCameraScan() {
+      if (!('BarcodeDetector' in window)) {
+        alert('Barcode scanning is not supported in this browser. Please use Chrome on Android.');
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        cameraStream = stream;
+        const video = document.getElementById('camera-preview');
+        video.srcObject = stream;
+        document.getElementById('camera-container').classList.remove('hidden');
+        document.getElementById('search-panel').classList.add('hidden');
+
+        const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'] });
+
+        scanInterval = setInterval(async () => {
+          if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            try {
+              const barcodes = await detector.detect(video);
+              if (barcodes.length > 0) {
+                const isbn = barcodes[0].rawValue.replace(/[^0-9X]/gi, '');
+                if (isbn.length >= 10) {
+                  stopCamera();
+                  await lookupISBN(isbn);
+                }
+              }
+            } catch (err) {
+              console.warn('Scan error', err);
+            }
+          }
+        }, 500);
+      } catch (err) {
+        alert('Could not access camera. Please allow camera permission and try again.');
+        console.error(err);
+      }
+    }
+
+    function stopCamera() {
+      if (scanInterval) clearInterval(scanInterval);
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
+      }
+      document.getElementById('camera-container').classList.add('hidden');
+      const video = document.getElementById('camera-preview');
+      if (video) video.srcObject = null;
+    }
+
+    async function lookupISBN(isbn) {
+      try {
+        const res = await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&jscmd=data&format=json`);
+        const data = await res.json();
+        const key = `ISBN:${isbn}`;
+        if (data[key]) {
+          fillFromOpenLibrary(data[key]);
+        } else {
+          // Fallback to isbn endpoint
+          const res2 = await fetch(`https://openlibrary.org/isbn/${isbn}.json`);
+          if (res2.ok) {
+            const data2 = await res2.json();
+            fillFromOpenLibrary(data2, isbn);
+          } else {
+            alert('Book not found for this ISBN. You can enter details manually.');
+          }
+        }
+      } catch (err) {
+        alert('Lookup failed. Check your connection.');
+        console.error(err);
+      }
+    }
+
+    function fillFromOpenLibrary(book, isbn) {
+      document.getElementById('title').value = book.title || '';
+      let author = '';
+      if (book.authors && book.authors.length) {
+        author = book.authors.map(a => a.name || a).join(', ');
+      } else if (book.author_name) {
+        author = Array.isArray(book.author_name) ? book.author_name.join(', ') : book.author_name;
+      }
+      document.getElementById('author').value = author;
+      // Cover
+      let cover = '';
+      if (book.cover && book.cover.large) cover = book.cover.large;
+      else if (book.covers && book.covers.length) cover = `https://covers.openlibrary.org/b/id/${book.covers[0]}-L.jpg`;
+      else if (isbn) cover = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+      document.getElementById('cover').value = cover;
+      // Notes with ISBN if available
+      const notes = document.getElementById('notes');
+      if (isbn && !notes.value) notes.value = `ISBN: ${isbn}`;
+      lucide.createIcons();
+    }
+
+    // ---- Online Search ----
+    function openSearchPanel() {
+      document.getElementById('search-panel').classList.toggle('hidden');
+      document.getElementById('camera-container').classList.add('hidden');
+      stopCamera();
+    }
+
+    async function searchBooksOnline() {
+      const q = document.getElementById('online-search').value.trim();
+      if (!q) return;
+      const resultsDiv = document.getElementById('search-results');
+      resultsDiv.innerHTML = '<p class="text-stone-500">Searching...</p>';
+      try {
+        const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=8`);
+        const data = await res.json();
+        if (!data.docs || data.docs.length === 0) {
+          resultsDiv.innerHTML = '<p class="text-stone-500">No results found.</p>';
+          return;
+        }
+        resultsDiv.innerHTML = data.docs.map((doc, i) => {
+          const authors = (doc.author_name || []).slice(0, 2).join(', ');
+          const year = doc.first_publish_year || '';
+          const cover = doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : '';
+          return `
+            <button type="button" class="w-full text-left p-2 hover:bg-stone-100 rounded flex gap-2 items-center" onclick="selectSearchResult(${i})">
+              ${cover ? `<img src="${cover}" class="w-8 h-12 object-cover rounded">` : '<div class="w-8 h-12 bg-stone-200 rounded"></div>'}
+              <div>
+                <div class="font-medium">${escapeHtml(doc.title)}</div>
+                <div class="text-xs text-stone-500">${escapeHtml(authors)} ${year ? '(' + year + ')' : ''}</div>
+              </div>
+            </button>
+          `;
+        }).join('');
+        window._searchResults = data.docs;
+      } catch (err) {
+        resultsDiv.innerHTML = '<p class="text-red-500">Search failed. Try again.</p>';
+      }
+    }
+
+    function selectSearchResult(index) {
+      const doc = window._searchResults && window._searchResults[index];
+      if (!doc) return;
+      document.getElementById('title').value = doc.title || '';
+      document.getElementById('author').value = (doc.author_name || []).join(', ');
+      if (doc.cover_i) {
+        document.getElementById('cover').value = `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
+      }
+      const notes = document.getElementById('notes');
+      if (doc.isbn && doc.isbn[0] && !notes.value) {
+        notes.value = `ISBN: ${doc.isbn[0]}`;
+      }
+      document.getElementById('search-panel').classList.add('hidden');
+      document.getElementById('search-results').innerHTML = '';
+      document.getElementById('online-search').value = '';
+    }
+
+    // Make sure icons are created after dynamic content
+    function refreshIcons() {
+      setTimeout(() => lucide.createIcons(), 50);
+    }
+
+    // Init
+    updateStats();
+    renderBooks();
+    lucide.createIcons();
+
+    // Register service worker for PWA install & offline
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(console.error);
+    }
+  </script>
+</body>
+</html>
